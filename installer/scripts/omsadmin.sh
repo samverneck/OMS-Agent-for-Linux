@@ -440,6 +440,18 @@ onboard()
 
     create_workspace_directories $WORKSPACE_ID
 
+    # TODO Idea: make a section here starting with
+    # I think I'm going to have to have a location that is NOT workspace specific (sysconf?)
+    #   to store a separate conf file with the global agent GUID
+    # if [ -z "$MULTI_HOMING_MARKER" ]; then
+    # From there, generate a new agent GUID if this will become the new primary workspce
+    # If a primary workspace exists, get it from that omsadmin.conf
+    # Else 
+    # Any agent GUID I assume should be written to the global agent GUID location
+
+    # What happens in the --upgrade <no workspace given> scenario?
+    # To seemlessly transition, the agent GUID from the primary workspace should be written to the sysconf location??
+
     if [ -f $FILE_KEY -a -f $FILE_CRT -a -f $CONF_OMSADMIN ]; then
         # Keep the same agent GUID by loading it from the previous conf
         AGENT_GUID=`grep AGENT_GUID $CONF_OMSADMIN | cut -d= -f2`
