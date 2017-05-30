@@ -1,5 +1,14 @@
 require 'optparse'
 
+# Error codes
+NON_PRIVELEGED_USER_ERROR_CODE = 2
+MISSING_CONFIG = 3
+MISSING_CERTS = 4
+ERROR_LOADING_CONFIG = 5
+ERROR_GENERATING_CERTS = 6
+# TODO organize the order here
+# TODO check that all users of this script do not explictly check if exit code != 1
+
 module MaintenanceModule
 
   class Maintenance
@@ -143,7 +152,7 @@ module MaintenanceModule
     def load_config
       if !File.exist?(@omsadmin_conf_path)
         log_error("Missing configuration file: #{@omsadmin_conf_path}")
-        return 1
+        return MISSING_CONFIG
       end
 
       File.open(@omsadmin_conf_path, "r").each_line do |line|
@@ -319,16 +328,17 @@ module MaintenanceModule
       @load_config_success = load_config
 
       # Check necessary inputs
-      if @load_config_success != 0
-        log_error("Error loading configuration from #{@omsadmin_conf_path}")
-        return 1
-      elsif @WORKSPACE_ID.nil? or @AGENT_GUID.nil? or @URL_TLD.nil? or
-          @WORKSPACE_ID.empty? or @AGENT_GUID.empty? or @URL_TLD.empty?
+      if @WORKSPACE_ID.nil? or @AGENT_GUID.nil? or @URL_TLD.nil? or
+          @WORKSPACE_ID.empty? or @AGENT_GUID.empty? or @URL_TLD.empty? or
+          @load_config_success == MISSING_CONFIG
         log_error("Missing required field from configuration file: #{@omsadmin_conf_path}")
-        return 1
+        return MISSING_CONFIG
+      elsif @load_config_success != 0
+        log_error("Error loading configuration from #{@omsadmin_conf_path}")
+        return ERROR_LOADING_CONFIG
       elsif !file_exists_nonempty(@cert_path) or !file_exists_nonempty(@key_path)
         log_error("Certificates for heartbeat request do not exist")
-        return 1
+        return MISSING_CERTS
       end
 
       # Generate the request body
@@ -369,19 +379,24 @@ module MaintenanceModule
         log_info("Heartbeat response code: #{res.code}") if @verbose
 
         if res.code == "200"
-          results = 0
-          results = 1 if apply_certificate_update_endpoint(res.body) == 1
-          results = 1 if apply_dsc_endpoint(res.body) == 1
-
-          log_info("Heartbeat success") if results == 0
-          return results
+          # TODO - get general error codes here too
+          cert_apply_res = apply_certificate_update_endpoint(res.body)
+          dsc_apply_res = apply_dsc_endpoint(res.body)
+          if cert_apply_res != 0
+            # TODO
+          elsif dsc_apply_res != 0
+            # TODO
+          else
+            log_info("Heartbeat success")
+            return 0
+          end
         else
           log_error("Error sending the heartbeat. HTTP code #{res.code}")
-          return 1
+          return 1 # TODO do omsadmin first - how do we communicate non-200 HTTP code?
         end
       else
         log_error("Error sending the heartbeat. No HTTP code")
-        return 1
+        return 1 # TODO this should be separate from HTTP errors - would need more info from the above error
       end
     end
 
@@ -389,7 +404,7 @@ module MaintenanceModule
     def generate_certs(workspace_id, agent_guid)
       if workspace_id.nil? or agent_guid.nil? or workspace_id.empty? or agent_guid.empty?
         log_error("Both WORKSPACE_ID and AGENT_GUID must be defined to generate certificates")
-        return 1
+        return MISSING_CONFIG
       end
 
       log_info("Generating certificate ...")
@@ -451,7 +466,7 @@ module MaintenanceModule
       # Check for any error or non-existent or empty files
       if !error.nil? or !file_exists_nonempty(@cert_path) or !file_exists_nonempty(@key_path)
         log_error("Error generating certs")
-        return 1
+        return ERROR_GENERATING_CERTS
       end
 
       return 0
@@ -498,7 +513,14 @@ module MaintenanceModule
 
       generated = generate_certs(@WORKSPACE_ID, @AGENT_GUID)
       if generated != 0
-        return 1
+        return ERROR_GENERATING_CERTS
+        # TODO consider larger classes of errors:
+        # Config Error
+        #    Config missing
+        #    Config file itself missing
+        # Cert Error
+        #    error generating certs
+        #    no cert update endpoint
       end
 
       # Form POST request
@@ -613,7 +635,7 @@ if __FILE__ == $0
   ret_code = 0
 
   if !maintenance.check_user
-    ret_code = 1
+    ret_code = NON_PRIVELEGED_USER_ERROR_CODE
 
   elsif options[:heartbeat]
     ret_code = maintenance.heartbeat
