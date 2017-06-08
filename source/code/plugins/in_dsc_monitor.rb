@@ -1,6 +1,7 @@
 require 'fluent/input'
 require 'fluent/config/error'
 require 'yaml/store'
+require 'fileutils'
 
 module Fluent
   class DscMonitoringInput < Input
@@ -85,6 +86,7 @@ OMS Settings failed – please report issue to github.com/Microsoft/PowerShell-D
           @dsc_cache[:status] = dsc_status
           @dsc_cache.commit
         }
+        File.chmod(0644, dsc_cache_file)
         sleep @check_status_interval
       end 
       rescue => e

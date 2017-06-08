@@ -862,6 +862,7 @@ make_dir()
     fi
 
     chown_omsagent $1
+    chmod 755 $1
 }
 
 copy_omsagent_conf()
